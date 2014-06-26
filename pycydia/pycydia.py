@@ -24,68 +24,66 @@
     SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 from hashlib import sha1
-import time, base64, requests, hmac, cgi
+from base64 import b64encode
+from time import time
+import requests, hmac, cgi
 
 __all__ = ['Cydia']
 
 class Cydia(object):
+    __all__ = ['checkCydiaPurchase', 'purchaseCompleted', 'getProvider', 'getStatus']
+    
     def __init__(self, udid, package_id, vendor, apikey):
-        self.UDID = udid
-        self.PACKAGE_ID = package_id
-        self.VENDOR = vendor
-        self.APIKEY = apikey
+        self.udid = udid
+        self.package_id = package_id
+        self.vendor = vendor
+        self.apikey = apikey
 
-        self.STATE = self.PROVIDER = self.STATUS = self.ERROR = None
+        self.state = self.provider = self.status = self.error = None
 
     # encoding stuff
-    def safe_b64enc(self, b64):
-        return b64.replace("=", "").replace("/", "_").replace("+", "-")
+    def safe_b64enc(self, s):
+        return b64encode(s).replace("=", "").replace("/", "_").replace("+", "-")
 
     def get_hmac(self, query, key):
-        tmphmac = hmac.new(key, query, sha1).digest()
-        signature = self.safe_b64enc(base64.b64encode(tmphmac))
-        return signature
+        return self.safe_b64enc(hmac.new(key, query, sha1).digest())
 
     # api stuff
-    def apiQuery(self, udid, package_id, vendor, apiKey):
-        query = "api=store-0.9&device=%s&mode=local&nonce=%d&package=%s&timestamp=%d&vendor=%s" % (udid, time.time() * 1e6, package_id, time.time(), vendor)
-        return query + "&signature=%s" % self.get_hmac(query, apiKey)
+    def apiQuery(self):
+        query = "api=store-0.9&device=%s&mode=local&nonce=%d&package=%s&timestamp=%d&vendor=%s" % (self.udid, time() * 1e6, self.package_id, time(), self.vendor)
+        return query + "&signature=%s" % self.get_hmac(query, self.apikey)
 
     def checkCydiaPurchase(self):
-        query = self.apiQuery(self.UDID, self.PACKAGE_ID, self.VENDOR, self.APIKEY)
-
-        request = requests.get('http://cydia.saurik.com/api/check?%s' % query)
+        request = requests.get('http://cydia.saurik.com/api/check?%s' % self.apiQuery())
 
         if not request:
-            self.ERROR = "Failed to open request to Cydia"
+            self.error = "Failed to open request to Cydia"
             return False
 
         if not request.content:
-            self.ERROR = "API request failed"
+            self.error = "API request failed"
             return False
 
         qs = cgi.parse_qs(request.content)
 
         if not qs:
-            self.ERROR = "No request content"
+            self.error = "No request content"
             return False
 
-        self.STATE = qs.get("state", ["uncompleted"])[0]
-
-        self.PROVIDER = qs.get("provider", [None])[0]
-
-        self.STATUS = qs.get("status", [None])[0]
+        self.state = qs.get("state", ["uncompleted"])[0]
+        self.provider = qs.get("provider", [None])[0]
+        self.status = qs.get("status", [None])[0]
         
         return True
 
     @property
     def purchaseCompleted(self):
-        return self.STATE == "completed"
+        return self.state == "completed"
 
     @property
     def getProvider(self):
-        return self.PROVIDER or False
+        return self.provider or False
 
     @property
     def getStatus(self):
-        return self.STATUS or False
+        return self.status or False
